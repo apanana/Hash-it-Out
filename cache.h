@@ -23,6 +23,7 @@ struct cache_obj{
 	hash_func hashf;
 
 	uint64_t maxmemory;
+	uint64_t occupiedmemory;
 	uint64_t buckets;
 	uint64_t occupied;
 	

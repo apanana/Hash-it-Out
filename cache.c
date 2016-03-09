@@ -23,6 +23,7 @@ cache_t create_cache(uint64_t maxmem,hash_func hash){
 	}
 	
 	cache->maxmemory = maxmem;
+	cache->occupiedmemory = 0;
 	cache->buckets = 10;
 	cache->occupied = 0;
 
@@ -77,12 +78,16 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 			cache->keyvals[index].size = val_size;
 			queue_add(cache->eviction,index);
 			cache->keyvals[index].node = cache->eviction->head;
+			cache->occupiedmemory = cache->occupiedmemory + val_size;
 			break;
 		}
 		else if (strcmp(cache->keyvals[index].key,key)==0){
 			cache->keyvals[index].val = realloc(cache->keyvals[index].val,val_size);
 			memcpy(cache->keyvals[index].val,val,val_size);
 			queue_update(cache->eviction,cache->keyvals[index].node);
+			cache->occupiedmemory =
+				cache->occupiedmemory-cache->keyvals[index].size + val_size;
+			cache->keyvals[index].size = val_size;
 			break;
 		}
 		else max ++;
@@ -127,6 +132,8 @@ void cache_delete(cache_t cache, key_type key){
 				free(cache->keyvals[index].val);
 				cache->keyvals[index].key = NULL;
 				cache->keyvals[index].val = NULL;
+				cache->occupiedmemory = 
+					cache->occupiedmemory - cache->keyvals[index].size;
 				cache->keyvals[index].size = 0;
 				queue_delete(cache->eviction,cache->keyvals[index].node);
 				cache->keyvals[index].node = NULL;
@@ -141,13 +148,14 @@ void cache_delete(cache_t cache, key_type key){
 
 // Compute the total amount of memory used up by all cache values (not keys)
 uint64_t cache_space_used(cache_t cache){
-	uint64_t total = 0;
-	int j = 0;
-	for(;j<cache->buckets;++j){
-		if (cache->keyvals[j].key!=NULL)
-			total = total + cache->keyvals[j].size;
-	}
-	return total;
+	// uint64_t total = 0;
+	// int j = 0;
+	// for(;j<cache->buckets;++j){
+	// 	if (cache->keyvals[j].key!=NULL)
+	// 		total = total + cache->keyvals[j].size;
+	// }
+	// return total;
+	return cache->occupiedmemory;
 }
 
 
