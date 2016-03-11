@@ -1,137 +1,130 @@
+// Alex Pan
+//
+// lru.c - implementation of the LRU eviction policy.
+//
+// This is my implementation of the methods for an LRU eviction
+// policy. lru_add, lru_update, lru_delete all pertain to maintaining
+// a queue. The last two functions, create_evict and destroy_evict, 
+// are for initailizing and destroying an evict struct. 
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include "lru.h"
 
-queue_t create_queue(){
-	queue_t out = malloc(sizeof(struct evict));
-	out->queue_size = 0;
-	out->head = NULL;
-	out->tail = NULL;
-	return out;
-}
-
-void queue_add(queue_t queue,int index){
-	if (queue->queue_size == 0){
-		if(queue->head ==NULL)queue->head = malloc(sizeof(struct node));
-		// if(queue->tail ==NULL)queue->tail = malloc(sizeof(struct node));
-		queue->head->index = index;
-		// queue->tail->index = index;
-		// queue->head->next = queue->tail;
-		queue->head->next = NULL;
-		queue->head->prev = NULL;
-		// queue->tail->next = NULL;
-		// queue->tail->prev = queue->head;
-		++queue->queue_size;
-	}
-	else if (queue->queue_size==1){
-		queue->tail = queue->head;
-		node_t n;
-		n = malloc(sizeof(struct node));
-		n->index = index;
+void lru_add(evict_t e, int hashtable_index){
+	node_t n = malloc(sizeof(struct node));
+	n->htable_index = hashtable_index;
+	// If queue is empty
+	if (e->head == NULL){
+		e->head = n;
 		n->prev = NULL;
-		n->next = queue->tail;
-		queue->head = n;
-		queue->tail->prev=queue->head;
-		++queue->queue_size;
+		n->next = NULL;
+	}
+	// If queue is of only one element
+	else if (e->tail == NULL){
+		e->tail = e->head;
+		e->tail->prev = n;
+		n->next = e->tail;
+		n->prev = NULL;
+		e->head = n;
 	}
 	else{
-		node_t n;
-		n = malloc(sizeof(struct node));
-		n->index = index;
+		e->head->prev = n;
+		n->next = e->head;
 		n->prev = NULL;
-		n->next = queue->head;
-		queue->head->prev = n;
-		queue->head = n;
-		++queue->queue_size;
+		e->head = n;
 	}
 }
 
-void queue_update(queue_t queue,node_t node){
-	if (queue->head == node) return;
-	else if (queue->tail == node){
-		queue->tail = node->prev;
-		queue->tail->next = NULL;
+void lru_update(evict_t e, node_t node){
+	// If node doesn't exist
+	if (node == NULL) return;
+	// If node is the head of the queue, do nothing
+	else if (e->head == node) return;
+	// If node is the tail of the queue
+	else if (e->tail == node){
+		e->tail = node->prev;
+		e->tail->next = NULL;
 		node->prev = NULL;
-		node->next = queue->head;
-		queue->head->prev = node;
-		queue->head = node;
-		return;
-
+		node->next = e->head;
+		e->head->prev = node;
+		e->head = node;
 	}
 	else{
 		node->prev->next = node->next;
 		node->next->prev = node->prev;
 		node->prev = NULL;
-		queue->head->prev = node;
-		node->next = queue->head;
-		queue->head = node;
+		e->head->prev = node;
+		node->next = e->head;
+		e->head = node;
 	}
-};
+}
 
-void queue_delete(queue_t queue,node_t node){
-	if (queue->queue_size == 0){
+void lru_delete(evict_t e, node_t node){
+	// If node doesn't exist
+	if (node == NULL) return;
+	// If the queue is empty
+	else if (e->head==NULL){
 		printf("Error: Attempting to delete from an empty queue!\n");
 	}
-	else if (queue->queue_size == 1){
-		queue->head->next = NULL;
-		// queue->tail->prev = NULL;
-		free(queue->head);
-		// free(queue->tail);
-		queue->head=NULL;
-		// queue->tail=NULL;
-		--queue->queue_size;
+	// If the queue is of only one element
+	else if (e->tail == NULL){
+		free(node);
+		e->head=NULL;
 	}
-	// else if (queue->queue_size == 2){
-	// 	if(queue->head->index == index){
-	// 		queue->head->index = queue->tail->index;
-	// 		--queue->queue_size;
-	// 	}
-	// 	else{
-	// 		queue->tail->index = queue->head->index;
-	// 			--queue->queue_size;
-	// 	}
-	// }
-	else if (queue->queue_size == 2){
-		if(queue->head->index == index){
-			queue->head = queue->tail;
-			queue->head->prev = NULL;
-			free(queue->tail);
-			queue->tail = NULL;
-			--queue->queue_size;
+	// If the queue is of only two elements
+	else if (e->head->next == e->tail){
+		if(e->head == node){
+			free(node);
+			e->head = e->tail;
+			e->head->prev = NULL;
+			e->tail = NULL;
 		}
 		else{
-			queue->head->next = NULL;
-			free(queue->tail);
-			queue->tail = NULL;
-			--queue->queue_size;
+			free(node);
+			e->tail = NULL;
+			e->head->next = NULL;
 		}
 	}
-
-	else if (queue->head==node){
-		queue->head = queue->head->next;
-		free(queue->head->prev);
-		queue->head->prev = NULL;
-		--queue->queue_size;
+	// If the node is the head of the queue
+	else if (e->head==node){
+		e->head = e->head->next;
+		free(node);
+		e->head->prev = NULL;
 	}
-	else if (queue->tail==node){
-		queue->tail = queue->tail->prev;
-		free(queue->tail->next);
-		queue->tail->next = NULL;
-		--queue->queue_size;		
+	// If the node is the tail of the queue
+	else if (e->tail==node){
+		e->tail = e->tail->prev;
+		free(node);
+		e->tail->next = NULL;	
 	}
 	else{
 		node->prev->next = node->next;
 		node->next->prev = node->prev;
-		--queue->queue_size;
 		free(node);
-		node = NULL;
 	}
 }
 
-void destroy_queue(queue_t queue){
-	while (queue->queue_size!=0) queue_delete(queue,queue->head);
-	if (queue->head!=NULL) printf("Head not null\n");
-	if (queue->tail!=NULL) printf("Tail not null\n");
-	free(queue);
-	queue = NULL;
+
+// This initalizes an evict struct and returns a pointer to it. It allows
+// the user to define what functions they want to use in their struct.
+// If the user does not define anything, then we default to the LRU functions.
+evict_t create_evict(add_func add, update_func update, remove_func remove){
+	evict_t e = calloc(1,sizeof(struct evict));
+	if (e->head!=NULL) printf("calloc failed: head not null\n");
+	if (e->tail!=NULL) printf("calloc failed: tail not null\n");
+	if (add==NULL) e->add = lru_add;
+	if (update==NULL) e->update = lru_update;
+	if (remove==NULL) e->remove = lru_delete;
+	return e;
+}
+
+// This destroys an evict struct and all connected resources.
+void destroy_evict(evict_t e){
+	while (e->head!=NULL) lru_delete(e,e->head);
+	if (e->head!=NULL) printf("Head not null\n");
+	if (e->tail!=NULL) printf("Tail not null\n");
+	free(e);
+	e = NULL;
 }

@@ -6,8 +6,8 @@ CC = gcc
 #  -Wall turns on most, but not all, compiler warnings
 CFLAGS  = -g -Wall
 
-all: c.o l.o t.o
-	$(CC) c.o l.o t.o -o test.out
+all: m.o c.o l.o t.o
+	$(CC) m.o c.o l.o t.o -o test.out
 
 # the build target executable:
 c.o:
@@ -19,7 +19,9 @@ l.o:
 t.o:
 	$(CC) -c $(CFLAGS) test.c -o t.o
 
+m.o:
+	$(CC) -c $(CFLAGS) main.c -o m.o
 
 
 clean:
-	$(RM) c.o l.o t.o
+	$(RM) m.o c.o l.o t.o

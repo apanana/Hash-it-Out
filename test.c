@@ -1,220 +1,226 @@
+// Alex Pan
+// 
+// test.c
+//
+// This file defines all my test functions. It contains both the tests
+// for my LRU API and my cache API. I built them as I was writing up 
+// my implementations, so they are structured as such. The LRU tests
+// are independent from the cache tests, but the cache tests depends on 
+// the LRU eviction policy to work. Similarly, within my tests for both of 
+// these sections, the first test functions are pretty much independent of
+// the rest of the API, but the second test functions won't pass unless
+// the first ones pass, etc. When running these tests, if anything fails
+// we should see a print statement telling us which test case failed
+// along with some relevant information showing us what the "unexpected"
+// behavior was.
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "cache.h"
 
-// TESTING FUNCTIONS //
-
-void testing_create_queue(){
+////////////////////////// testing LRU functions ////////////////////////
+void testing_lru_add(){
 	int failed = 0;
-	queue_t q = create_queue();
-	int size = q->queue_size;
-	if(size!=0){
-		printf("Initializing queue size failed\n");
-		++failed;
-	}
-	if (q->head!=NULL){
-		printf("NULL on head failed\n");
-		++failed;
-	} 
-	if (q->tail!=NULL){
-		printf("NULL on tail failed\n");
-		++failed;
-	}
-	if (failed==0) printf("Testing create_queue() successful\n");
-	else printf("Testing create_queue() failed\n");
-	destroy_queue(q);
-	q = NULL;
-}
-
-void testing_queue_add(){
-	int failed = 0;
-	queue_t q = create_queue();
-	queue_add(q,0);
-	if(q->head->index != 0 ||
-		q->tail != NULL ||
-		q->head->prev != NULL ||
-		q->head->next != NULL ||
-		q->queue_size != 1){
+	evict_t e = calloc(1,sizeof(struct evict));
+	lru_add(e,0);
+	if(e->head->htable_index != 0 ||
+		e->tail != NULL ||
+		e->head->prev != NULL ||
+		e->head->next != NULL){
 			printf("Test failed on initalizing first element");
 			++failed;
 	}
-
 	for(int i = 1;i<10;++i){
-		queue_add(q,i);
-		if(q->head->index != i ||
-			q->tail->index != 0 ||
-			q->head->prev != NULL ||
-			q->tail->next != NULL ||
-			q->queue_size != i+1){
+		lru_add(e,i);
+		if(e->head->htable_index != i ||
+			e->tail->htable_index != 0 ||
+			e->head->prev != NULL ||
+			e->tail->next != NULL){
+				printf("%p\n",e->head->prev);
+				printf("%p\n",e->tail->next);
+				printf("%d\t",e->head->htable_index);
+				printf("%d\t",e->tail->htable_index);
 				printf("Test failed on initalizing element %d\n",i);
 				++failed;
 		}
 	}
-	if (failed==0) printf("Testing add_queue() successful\n");
-	else printf("Testing add_queue() failed\n");
-	destroy_queue(q);
-	q = NULL;
+	if (failed==0) printf("Testing lru_add() successful\n");
+	else printf("Testing lru_add() failed\n");
+	destroy_evict(e);
+	e = NULL;
 }
 
-void testing_queue_update(){
+void testing_lru_update(){
 	int failed = 0;
-	queue_t q = create_queue();
+	evict_t e = calloc(1,sizeof(struct evict));
 	for(int i = 0;i<10;++i){
-		queue_add(q,i);
+		lru_add(e,i);
 	}
-	queue_update(q,q->head);
-	if(q->head->index != 9 ||
-		q->head->next->index!=8||
-		q->tail->index != 0 ||
-		q->head->prev != NULL ||
-		q->tail->next != NULL ||
-		q->queue_size != 10){
+	lru_update(e,e->head);
+	if(e->head->htable_index != 9 ||
+		e->head->next->htable_index!=8||
+		e->tail->htable_index != 0 ||
+		e->head->prev != NULL ||
+		e->tail->next != NULL){
 		printf("Test failed on updating first element\n");
 	}
 
 	for(int i = 8;i>0;--i){
-		node_t n = q->head->next;
+		node_t n = e->head->next;
 		for(int j = 8-i;j>0;--j){
 			n = n->next;
 		}
-		queue_update(q,n);
-		if(q->head->index != i ||
-			q->head->next->index != i+1||
-			q->tail->index != 0 ||
-			q->head->prev != NULL ||
-			q->tail->next != NULL ||
-			q->queue_size != 10){
-				printf("head %d",q->head->index);
-				printf("tail %d",q->tail->index);
-				printf("size %d",q->queue_size);
+		lru_update(e,n);
+		if(e->head->htable_index != i ||
+			e->head->next->htable_index != i+1||
+			e->tail->htable_index != 0 ||
+			e->head->prev != NULL ||
+			e->tail->next != NULL){
+				printf("head %d",e->head->htable_index);
+				printf("tail %d",e->tail->htable_index);
 				printf("Test failed on updating element %d\n",i);
 				++failed;
 		}
 	}
 
-	queue_update(q,q->tail);
-	if(q->head->index != 0 ||
-		q->head->next->index != 1 ||
-		q->tail->index != 9 ||
-		q->head->prev != NULL ||
-		q->tail->next != NULL ||
-		q->queue_size != 10){
-			printf("head %d",q->head->index);
-		printf("tail %d",q->tail->prev->index);
-			printf("tailprev %d",q->tail->index);
-			printf("size %d\n",q->queue_size);
+	lru_update(e,e->tail);
+	if(e->head->htable_index != 0 ||
+		e->head->next->htable_index != 1 ||
+		e->tail->htable_index != 9 ||
+		e->head->prev != NULL ||
+		e->tail->next != NULL){
+			printf("head %d",e->head->htable_index);
+			printf("tail %d",e->tail->prev->htable_index);
+			printf("tailprev %d",e->tail->htable_index);
 			printf("Test failed on updating last element\n");
 			++failed;
 	}
-	if (failed==0) printf("Testing queue_update() successful\n");
-	else printf("Testing queue_update() failed\n");
-	destroy_queue(q);
-	q = NULL;
+	if (failed==0) printf("Testing lru_update() successful\n");
+	else printf("Testing lru_update() failed\n");
+
+	destroy_evict(e);
+	e = NULL;
 }
 
-void testing_queue_delete(){
+void testing_lru_delete(){
 	int failed = 0;
-	queue_t q = create_queue();
+	evict_t e = calloc(1,sizeof(struct evict));
 	for(int i = 0;i<10;++i){
-		queue_add(q,i);
+		lru_add(e,i);
 	}
 	//[9,8,7,6,5,4,3,2,1,0]
 	for(int i = 0;i<=5;++i){
-		node_t n = q->head;
+		node_t n = e->head;
 		for(int j=0;j<i;++j){
 			n = n->next;
 		}
-		queue_update(q,n);
+		lru_update(e,n);
 	}
 	//[3,4,5,6,7,8,9,2,1,0]
 	for(int i = 0;i<=3;++i){
-		node_t n = q->tail->prev->prev->prev;
-		queue_update(q,n);
+		node_t n = e->tail->prev->prev->prev;
+		lru_update(e,n);
 	}
 	//[7,8,9,3,4,5,6,2,1,0]
 	for(int i = 0;i<2;++i){
-		queue_delete(q,q->tail);
-		if (q->head->index!= 7 ||
-			q->tail->index!= i+1 ||
-			q->queue_size != 9-i){
+		lru_delete(e,e->tail);
+		if (e->head->htable_index!= 7 ||
+			e->tail->htable_index!= i+1){
 				printf("%d\n",i);
-				printf("head %d",q->head->index);
-				printf("tail %d",q->tail->index);
-				printf("size %d",q->queue_size);
+				printf("head %d",e->head->htable_index);
+				printf("tail %d",e->tail->htable_index);
 				printf("Test failed on deleting element from end\n");
 				++failed;
 		}
 	}
-	queue_delete(q,q->tail);
+	lru_delete(e,e->tail);
 	for(int i = 3;i<6;++i){
-		queue_delete(q,q->head->next->next->next);
-		if (q->head->index!= 7 ||
-			q->tail->index!= 6 ||
-			q->queue_size != 9-i){
-				printf("head %d",q->head->index);
-				printf("tail %d",q->tail->index);
-				printf("size %d\n",q->queue_size);
+		lru_delete(e,e->head->next->next->next);
+		if (e->head->htable_index!= 7 ||
+			e->tail->htable_index!= 6){
+				printf("head %d",e->head->htable_index);
+				printf("tail %d",e->tail->htable_index);
 				printf("Test failed on deleting element from middle\n");
 				++failed;
 		}
 	}
 	for(int i = 7;i<9;++i){
-		queue_delete(q,q->head);
-		if (q->head->index!= i+1 ||
-			q->tail->index!= 6 ||
-			q->queue_size != 10-i){
-				printf("head %d",q->head->index);
-				printf("tail %d",q->tail->index);
-				printf("size %d\n",q->queue_size);
+		lru_delete(e,e->head);
+		if (e->head->htable_index!= i+1 ||
+			e->tail->htable_index!= 6){
+				printf("head %d",e->head->htable_index);
+				printf("tail %d",e->tail->htable_index);
 				printf("Test failed on deleting element from head\n");
 				++failed;
 		}
 	}
-	queue_delete(q,q->head);
-	queue_delete(q,q->tail);
-	queue_t a = q;
-	for(int i = 0;i<10;++i){
-		queue_add(q,i);
+	lru_delete(e,e->head);
+	lru_delete(e,e->tail);
+	if (e->head==NULL||
+		e->tail!=NULL){
+		printf("Test failed on trying to delete tail from queue of one");
+		++failed;
 	}
-	for(int i = 0;i<10;++i){
-		queue_delete(q,q->head);
-	}
-	if (q!=a){
-		printf("Test failed on clearing a queue\n");
+	lru_delete(e,e->head);
+	if (e->head!=NULL||
+		e->tail!=NULL){
+		printf("Test failed on clearing queue");
 		++failed;
 	}
 
-	if (failed==0) printf("Testing queue_delete() successful\n");
-	else printf("Testing update_delete() failed\n");
 
-	destroy_queue(q);
-	q=NULL;
+	if (failed==0) printf("Testing lru_delete() successful\n");
+	else printf("Testing lru_delete() failed\n");
+
+	destroy_evict(e);
+	e=NULL;
 }
 
-// void testing_hashfunc(hash_func func,key_type key,uint64_t expected){
-// 	printf("Testing (*hash_func):\n");
-// 	uint64_t testout = (func)(key);
-// 	if (testout == expected) printf("Test succesful\n");
-// 	else printf("Test failed on input %s",key);
-// }
+void testing_create_evict(){
+	int failed = 0;
+	evict_t e = create_evict(NULL,NULL,NULL);
+	if (e->head!=NULL){
+		printf("NULL on head failed\n");
+		++failed;
+	} 
+	if (e->tail!=NULL){
+		printf("NULL on tail failed\n");
+		++failed;
+	}
+	if (failed==0) printf("Testing create_evict() successful\n");
+	else printf("Testing create_evict() failed\n");
+	destroy_evict(e);
+	e = NULL;
+}
 
 void testing_create_cache(){
 	int failed = 0;
-	cache_t c = create_cache(100,NULL);
+	int size = 100;
+	cache_t c = create_cache(size,NULL);
 
 	char * current = "checking maxmemory";
-	if(c->maxmemory!=100){
+	if(c->maxmemory!=size){
 		printf("Test failed on: %s\n",current);
 		++failed;
 	}
 	current = "checking number of buckets";
-	if(c->buckets!=10){
+	if(c->buckets!=size){
 		printf("Test failed on: %s\n",current);
 		++failed;
 	}
-	current = "checking number of occupied buckets";
-	if (c->occupied!=0){
+	current = "checking amount of occupied buckets";
+	if (c->occupiedbuckets!=0){
+		printf("Test failed on: %s\n",current);
+		++failed;
+	}
+	current = "checking amount of memory";
+	if(c->maxmemory!=size){
+		printf("Test failed on: %s\n",current);
+		++failed;
+	}
+	current = "checking amount of occupied memory";
+	if (c->occupiedmemory!=0){
 		printf("Test failed on: %s\n",current);
 		++failed;
 	} 
@@ -222,9 +228,9 @@ void testing_create_cache(){
 	else printf("Testing create_cache() failed\n");
 
 	destroy_cache(c);
-
 	c = NULL;
 }
+
 
 void testing_cache_set(){
 	int failed = 0;
@@ -232,13 +238,15 @@ void testing_cache_set(){
 	char * current = "setting first element (str)";
 	cache_set(c,(key_type)"1",(val_type)"val1",5);
 	if(strcmp(c->keyvals[(c->hashf)((key_type)"1")%(c->buckets)].val,"val1")!=0 ||
-		c->eviction->head->index != 7 ||
-		c->eviction->tail != NULL ||
-		c->eviction->head != c->keyvals[7].node ||
-		c->occupied != 1){
+		c->lru->head->htable_index != 17 ||
+		c->lru->tail != NULL ||
+		c->lru->head != c->keyvals[17].lru_node ||
+		c->occupiedbuckets != 1){
 		printf("Test failed on: %s\n",current);
 		printf("%s\n",c->keyvals[(c->hashf)((key_type)"1")%(c->buckets)].val);
-		printf("%d\n",c->eviction->head->index);
+		printf("%d\n",c->lru->head->htable_index);
+		printf("%d\n",c->keyvals[17].lru_node->htable_index);
+		printf("%d\n",c->occupiedbuckets);
 		++failed;
 	}
 
@@ -247,24 +255,24 @@ void testing_cache_set(){
 	int * ap = &a;
 	cache_set(c,(key_type)"22",(val_type)ap,sizeof(ap));
 	if( *(int*)c->keyvals[(c->hashf)((key_type)"22")%(c->buckets)].val != 2 ||
-		c->eviction->head->index!=4 ||
-		c->eviction->tail->index!=7 ||
-		c->occupied != 2){
+		c->lru->head->htable_index!=34 ||
+		c->lru->tail->htable_index!=17 ||
+		c->occupiedbuckets != 2){
 		printf("Test failed on: %s\n",current);
 		printf("%d\n",*(int*)c->keyvals[(c->hashf)((key_type)"22")%(c->buckets)].val);
-		printf("%d\n",c->eviction->head->index );
+		printf("%d\n",c->lru->head->htable_index );
 		++failed;
 	}
 
 	current = "resetting a value in the cache";
 	cache_set(c,(key_type)"1",(val_type)"33",3);
 	if( strcmp(c->keyvals[(c->hashf)((key_type)"1")%(c->buckets)].val,"33")!=0 ||
-		c->eviction->head->index != 7 ||
-		c->eviction->tail->index != 4 ||
-		c->occupied != 2){
+		c->lru->head->htable_index != 17 ||
+		c->lru->tail->htable_index != 34 ||
+		c->occupiedbuckets != 2){
 		printf("Test failed on: %s\n",current);
 		printf("%s\n",c->keyvals[(c->hashf)((key_type)"1")%(c->buckets)].val);
-		printf("%d\n",c->eviction->head->index);
+		printf("%d\n",c->lru->head->htable_index);
 		++failed;
 	}
 
@@ -273,38 +281,37 @@ void testing_cache_set(){
 	cache_set(c,(key_type)"4",(val_type)"val4",5);
 	cache_set(c,(key_type)"5",(val_type)"val5",5);
 	cache_set(c,(key_type)"6",(val_type)"val6",5);
-	if( c->eviction->head->index != 17 ||
-		c->eviction->head->next->index != 0 ||
-		c->eviction->head->next->next->index != 9 ||
-		c->eviction->head->next->next->next->index != 8 ||
-		c->eviction->tail->prev->index != 7 ||
-		c->eviction->tail->index != 4 ||
-		c->occupied != 6 ||
-		c->buckets != 20){
+	if( c->lru->head->htable_index != 21 ||
+		c->lru->head->next->htable_index != 20 ||
+		c->lru->head->next->next->htable_index != 19 ||
+		c->lru->head->next->next->next->htable_index != 18 ||
+		c->lru->tail->prev->htable_index != 17 ||
+		c->lru->tail->htable_index != 34 ||
+		c->occupiedbuckets != 6 ||
+		c->buckets != 100){
 		printf("Test failed on: %s\n",current);
-		printf("%d\n",c->eviction->head->index);
-		printf("%d\n",c->eviction->head->next->index);
-		printf("%d\n",c->eviction->head->next->next->index);
-		printf("%d\n",c->eviction->head->next->next->next->index);
-		printf("%d\n",c->eviction->tail->prev->index);
-		printf("%d\n",c->eviction->tail->index);
+		printf("%d\n",c->lru->head->htable_index);
+		printf("%d\n",c->lru->head->next->htable_index);
+		printf("%d\n",c->lru->head->next->next->htable_index);
+		printf("%d\n",c->lru->head->next->next->next->htable_index);
+		printf("%d\n",c->lru->tail->prev->htable_index);
+		printf("%d\n",c->lru->tail->htable_index);
 		++failed;
 	}
-
 	current = "overloading the cache's maxmem";
 	cache_set(c,(key_type)"7",(val_type)"123456789012345678901234567890\
 		123456789012345678901234567890123456789012345678901234567890",91);
-	if( c->eviction->head->index != 18 ||
-		c->eviction->head->next->index != 17 ||
-		c->eviction->tail->index != 17 ||
-		c->occupied != 2 ||
-		c->buckets != 20){
+
+	if( c->lru->head->htable_index != 17 ||
+		c->lru->head->next->htable_index != 21 ||
+		c->lru->tail->htable_index != 21 ||
+		c->occupiedbuckets != 2 ||
+		c->buckets != 100){
 		printf("Test failed on: %s\n",current);
-		printf("%d\n",c->eviction->head->index);
-		printf("%d\n",c->eviction->tail->index);
+		printf("%d\n",c->lru->head->htable_index);
+		printf("%d\n",c->lru->tail->htable_index);
 		++failed;
 	}
-	
 	if (failed==0) printf("Testing cache_set() successful\n");
 	else printf("Testing cache_set() failed\n");
 	destroy_cache(c);
@@ -422,7 +429,9 @@ void testing_cache_delete(){
 	cache_set(c,(key_type)"6",(val_type)"val6",5);
 	cache_delete(c,(key_type)"6");
 	if(cache_get(c,(key_type)"6")!=NULL||
-		c->buckets != 20){
+		c->occupiedbuckets != 5 ||
+		c->buckets != 100){
+		printf("%llu\n",c->occupiedbuckets);
 		printf("%llu\n",c->buckets);
 		printf("Test failed on: %s\n",current);
 		++failed;
@@ -434,13 +443,13 @@ void testing_cache_delete(){
 	//should be evicted because of the memory overload. currently
 	//the most recent element is under the key "5".
 	if(cache_get(c,(key_type)"1")!=NULL||
-		c->eviction->head->index!=17 ||
-		c->buckets != 20 ||
-		c->occupied != 2){
-		printf("%d\n",c->eviction->head->index);
-		printf("%d\n",c->eviction->tail->index);
+		c->lru->head->htable_index!=17 ||
+		c->buckets != 100 ||
+		c->occupiedbuckets != 2){
+		printf("%d\n",c->lru->head->htable_index);
+		printf("%d\n",c->lru->tail->htable_index);
 		printf("%llu\n",c->buckets);
-		printf("%llu\n",c->occupied);
+		printf("%llu\n",c->occupiedbuckets);
 		printf("Test failed on: %s\n",current);
 		++failed;
 	}
@@ -521,9 +530,9 @@ void testing_cache_space_used(){
 		12345678901234567890123456789012345",76);
 	size = cache_space_used(c);
 	if(size!=96 ||
-		c->occupied != 5){
+		c->occupiedbuckets != 5){
 		printf("%llu\n",size);
-		printf("%llu\n", c->occupied);
+		printf("%llu\n", c->occupiedbuckets);
 		printf("Test failed on: %s\n",current);
 		++failed;
 	}
@@ -533,9 +542,9 @@ void testing_cache_space_used(){
 	cache_set(c,(key_type)"7",(val_type)"123456789012345678901234567890",31);
 	size = cache_space_used(c);
 	if(size!=31 ||
-		c->occupied != 1){
+		c->occupiedbuckets != 1){
 		printf("%llu\n",size);
-		printf("%llu\n", c->occupied);
+		printf("%llu\n", c->occupiedbuckets);
 		printf("Test failed on: %s\n",current);
 		++failed;
 	}
