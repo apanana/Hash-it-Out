@@ -1,20 +1,31 @@
-// Alex Pan
-//
-// cache.c - implementation of the cache.
-//
-// This is my implementation of the cache. I require that the user define
-// their own API for an eviction policy, but provide the LRU eviction policy
-// as a default. 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include "cache.h"
+#include "lru.h"
 
-// A default hash function that will be used if the user does not provide
-// their own. They should because this a bad hash function.
-uint64_t defaulthash(key_type input){
-	uint64_t out = 17*strlen((const char *)input);
-	return out;
+struct cache_obj{
+	hash_func hashf;
+	uint64_t maxmemory;
+	uint64_t occupiedmemory;
+	uint64_t buckets;
+	uint64_t occupiedbuckets;
+	struct cache_keyval * keyvals; // Defined in lru.h
+	evict_t lru; // Defined in lru.h
+};
+
+uint64_t modified_jenkins(key_type key)
+{	
+	// Modified jenkins hash function by Alex Ledger. 
+    // https://en.wikipedia.org/wiki/Jenkins_hash_function
+    uint32_t hash = *key;
+    hash += (hash << 10);
+    hash ^= (hash >> 6);
+    hash += (hash << 3);
+    hash ^= (hash >> 11);
+    hash += (hash << 15);
+    return (uint64_t) hash;
 }
 
 // Create a new cache object with a given maximum memory capacity
@@ -32,9 +43,7 @@ cache_t create_cache(uint64_t maxmem,hash_func hash){
 	cache->buckets = maxmem;
 	cache->occupiedbuckets = 0;
 
-	if(hash == NULL){
-		cache->hashf = defaulthash;
-	}
+	if(hash == NULL) cache->hashf = modified_jenkins;
 	else cache->hashf = hash;
 
 	cache->keyvals = calloc(maxmem,sizeof(struct cache_keyval));
@@ -43,6 +52,51 @@ cache_t create_cache(uint64_t maxmem,hash_func hash){
 	cache->lru = create_evict(NULL,NULL,NULL);
 
 	return cache; 
+}
+
+// Linear probing of the cache searching for a specified key. 
+// The specific way we treat cases depends on whether or not
+// we are trying to set an element, so this takes a third argument
+// that lets us know whether we are probing to set a val or not.
+int linear_probe(cache_t cache, key_type key, bool set){
+	int max = 0;
+	int index;
+	while (max < cache->buckets){
+		index = (cache->hashf(key) + max) % cache->buckets;
+		if (cache->keyvals[index].key == NULL){
+			if (set) return index;
+			else ++max;
+		}
+		else if (strcmp(cache->keyvals[index].key,key)==0) return index;
+		else ++ max;
+	}
+	return -1;
+}
+
+// Function that sets a <key,value> pair in the hash table at a specified index.
+void cache_set_new(cache_t cache, key_type key, val_type val, uint32_t val_size,uint64_t index){
+	cache->keyvals[index].key = calloc(strlen(key)+1,sizeof(uint8_t *));
+	strcpy(cache->keyvals[index].key,key);
+	cache->keyvals[index].val = malloc(val_size);
+	memcpy(cache->keyvals[index].val,val,val_size);
+	cache->keyvals[index].val_size = val_size;
+	// Update our evict struct with its own function.
+	cache->lru->add(cache->lru,index);
+	cache->keyvals[index].lru_node = cache->lru->head;
+
+	cache->occupiedbuckets = cache->occupiedbuckets + 1;
+	cache->occupiedmemory = cache->occupiedmemory + val_size;
+}
+
+// Function that updates a <key,value> pair in the hash table at a specified index.
+void cache_update(cache_t cache, key_type key, val_type val, uint32_t val_size,uint64_t index){
+	cache->keyvals[index].val = realloc(cache->keyvals[index].val,val_size);
+	memcpy(cache->keyvals[index].val,val,val_size);
+	// Update our evict struct with its own function.
+	cache->lru->update(cache->lru,cache->keyvals[index].lru_node);
+	cache->occupiedmemory =
+		cache->occupiedmemory-cache->keyvals[index].val_size + val_size;
+	cache->keyvals[index].val_size = val_size;
 }
 
 // Add a <key, value> pair to the cache.
@@ -76,90 +130,48 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 	}
 
 	// Linear probing for adding new element.
-	int max = 0;
-	int64_t index;
-	while (max < cache->buckets){
-		index = (cache->hashf(key) + max) % cache->buckets;
-		// If we find an empty slot
-		if (cache->keyvals[index].key == NULL){
-			cache->keyvals[index].key = calloc(strlen(key)+1,sizeof(uint8_t *));
-			strcpy(cache->keyvals[index].key,key);
-			cache->keyvals[index].val = malloc(val_size);
-			memcpy(cache->keyvals[index].val,val,val_size);
-			cache->keyvals[index].val_size = val_size;
-			// Update our evict struct with its own function.
-			cache->lru->add(cache->lru,index);
-			cache->keyvals[index].lru_node = cache->lru->head;
-
-			cache->occupiedbuckets = cache->occupiedbuckets + 1;
-			cache->occupiedmemory = cache->occupiedmemory + val_size;
-			break;
-		}
-		// If we find an entry that has the same key, replace the val
-		else if (strcmp(cache->keyvals[index].key,key)==0){
-			cache->keyvals[index].val = realloc(cache->keyvals[index].val,val_size);
-			memcpy(cache->keyvals[index].val,val,val_size);
-			// Update our evict struct with its own function.
-			cache->lru->update(cache->lru,cache->keyvals[index].lru_node);
-			cache->occupiedmemory =
-				cache->occupiedmemory-cache->keyvals[index].val_size + val_size;
-			cache->keyvals[index].val_size = val_size;
-			break;
-		}
-		else max ++;
+	uint64_t index = linear_probe(cache,key,true);
+	if (index == -1){
+		// This should never happen if our cache is properly resizing, which 
+		// is why we return an error if no open slots are found.
+		printf("Error on linear probing when trying to set cache. Found no slots\n");
+		return;
 	}
+	if (cache->keyvals[index].key == NULL) cache_set_new(cache,key,val,val_size,index);
+	else cache_update(cache,key,val,val_size,index);
 }
 
 
 // Retrieve the value associated with key in the cache, or NULL if not found.
 // The size of the returned buffer will be assigned to *val_size.
-val_type cache_get(cache_t cache, key_type key){
-	int max = 0;
-	int64_t index;
-	if (cache==NULL){
-		printf("Error: Cache is NULL");
-		return NULL;
-	} 
-	if (cache->occupiedbuckets==0) return NULL;
+val_type cache_get(cache_t cache, key_type key, uint32_t *val_size){
 	// Linear probing to find our key.
-	while (max < cache->buckets){
-		index = (cache->hashf(key) + max) % cache->buckets;
-		if (cache->keyvals[index].key!=NULL){
-			if (strcmp(cache->keyvals[index].key,key)==0){
-				return cache->keyvals[index].val;
-			}
-		}
-		max++;
+	int index = linear_probe(cache,key,false);
+	if (index!=-1){
+		cache->lru->update(cache->lru,cache->keyvals[index].lru_node);
+		*val_size = cache->keyvals[index].val_size;
+		return cache->keyvals[index].val;
 	}
-	// Return if key isnt in our hash table. 
+	// Return NULL if key isnt in our hash table. 
 	return NULL;
 }
 
 
 // Delete an object from the cache, if it's still there.
 void cache_delete(cache_t cache, key_type key){
-	int max = 0;
-	int64_t index;
-	// Linear probing for removing element.
-	while (max < cache->buckets){
-		index = (cache->hashf(key) + max) % cache->buckets;
-		if (cache->keyvals[index].key!=NULL){
-			if (strcmp(cache->keyvals[index].key,key)==0){
-				free(cache->keyvals[index].key);
-				free(cache->keyvals[index].val);
-				cache->keyvals[index].key = NULL;
-				cache->keyvals[index].val = NULL;
-				cache->occupiedmemory = 
-					cache->occupiedmemory - cache->keyvals[index].val_size;
-				cache->keyvals[index].val_size = 0;
-				// Update our evict struct with its own function.
-				cache->lru->remove(cache->lru,cache->keyvals[index].lru_node);
-				cache->keyvals[index].lru_node = NULL;
-				cache->occupiedbuckets = cache->occupiedbuckets -1;	
-				return;
-			}
-		}
-		++max;
+	uint64_t index = linear_probe(cache,key,false);
+	if (index!=-1){
+		free(cache->keyvals[index].key);
+		free(cache->keyvals[index].val);
+		cache->keyvals[index].key = NULL;
+		cache->keyvals[index].val = NULL;
+		cache->occupiedmemory = 
+			cache->occupiedmemory - cache->keyvals[index].val_size;
+		cache->keyvals[index].val_size = 0;
+		// Update our evict struct with its own function.
+		cache->lru->remove(cache->lru,cache->keyvals[index].lru_node);
+		cache->keyvals[index].lru_node = NULL;
+		cache->occupiedbuckets = cache->occupiedbuckets -1;	
 	}
 }
 
