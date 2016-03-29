@@ -12,7 +12,7 @@ This is an updated version of the cache from HW3 (Hash-it-out). To see the submi
 
 ### Notes on testing:
 * To use this in the testing suite we made for HW4, simply replace relevant source files and make sure to update `cache_get_wrapper()` inside of `cache_wrapper.c`. This version of the cache adheres to the API so we don't need to have a special case, but to save time (ie replacing cache_get_wrapper with cache_get in every test file) just modify the wrapper function instead of deleting it.
-* Running this should pass all our tests.
+* Running this on our testing suite should now pass all "necessary" tests.
 
 ### Changes to come:
 * Will be looking at other groups' submissions for HW4 to see if there were any bugs in my cache our testing did not catch. Patches will be made accordingly. 
